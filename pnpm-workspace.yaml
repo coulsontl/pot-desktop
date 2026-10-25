@@ -1,3 +1,8 @@
+# pnpm 11 writes only allowBuilds here, but pnpm 9 (what CI's pnpm/action-setup
+# resolves) insists on a packages field and fails with "packages field missing
+# or empty". An empty list keeps both happy: this is not a monorepo.
+packages: []
+
 allowBuilds:
   esbuild: true
   protobufjs: true
