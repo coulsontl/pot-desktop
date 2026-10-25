@@ -11,14 +11,18 @@ export RUSTUP_HOME=/usr/local/rustup
 mkdir -p "$CARGO_HOME" "$RUSTUP_HOME"
 
 apt-get update
+# `file` is not part of the base image but appimagetool refuses to run without
+# it ("file command is missing but required"), failing the AppImage bundle.
 apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     wget \
     xz-utils \
+    file \
     build-essential \
     pkg-config \
     libssl-dev \
+    libwebkit2gtk-4.0-dev \
     libgtk-3-dev \
     libayatana-appindicator3-dev \
     librsvg2-dev \
@@ -27,21 +31,6 @@ apt-get install -y --no-install-recommends \
     libxcb1 \
     libxrandr2 \
     libdbus-1-3
-
-# Pin webkit2gtk to the version jammy shipped initially. wry 0.24 calls
-# Settings::set_enable_webgl and friends, which newer webkit (2.44+, what
-# jammy-updates now carries) removed, so an unpinned install fails to compile
-# wry. 2.36.0 is the last API-compatible release in this distro.
-WEBKIT_VERSION=2.36.0-2ubuntu1
-apt-get install -y --no-install-recommends \
-    libwebkit2gtk-4.0-dev=$WEBKIT_VERSION \
-    libwebkit2gtk-4.0-37=$WEBKIT_VERSION \
-    libjavascriptcoregtk-4.0-dev=$WEBKIT_VERSION \
-    libjavascriptcoregtk-4.0-18=$WEBKIT_VERSION \
-    gir1.2-webkit2-4.0=$WEBKIT_VERSION \
-    gir1.2-javascriptcoregtk-4.0=$WEBKIT_VERSION
-apt-mark hold libwebkit2gtk-4.0-dev libwebkit2gtk-4.0-37 \
-    libjavascriptcoregtk-4.0-dev libjavascriptcoregtk-4.0-18
 
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --no-modify-path
 export PATH="$CARGO_HOME/bin:$PATH"
