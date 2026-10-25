@@ -357,6 +357,51 @@
                 "caiyun": {
                     "title": "Caiyun",
                     "token": "Token"
+                },
+                "openai_compat": {
+                    "title": "OpenAI Compatible",
+                    "base_url": "Base URL",
+                    "base_url_hint": "Full API base URL, without a trailing slash.",
+                    "api_key": "API Key",
+                    "api_key_hint": "Leave empty for local compatible services",
+                    "model": "Model",
+                    "temperature": "Temperature",
+                    "reasoning_effort": "Reasoning Effort",
+                    "reasoning_effort_hint": "none/low/medium/high for reasoning models; none omits the field.",
+                    "stream": "Stream",
+                    "prompt_list": "Prompt List",
+                    "prompt_description": "Available variables: {source_language}, {target_language}, {detected_source_language}, {text}.",
+                    "add_prompt": "Add Prompt"
+                },
+                "anthropic_compat": {
+                    "title": "Anthropic Compatible",
+                    "base_url": "Base URL",
+                    "base_url_hint": "Full Anthropic Messages API base URL, no trailing slash.",
+                    "auth_header": "Auth Header",
+                    "api_key": "API Key",
+                    "api_key_hint": "Leave empty for local compatible services",
+                    "api_version": "API Version",
+                    "api_version_hint": "Sent via the anthropic-version header.",
+                    "model": "Model",
+                    "max_tokens": "Max Output Tokens",
+                    "temperature": "Temperature",
+                    "stream": "Stream",
+                    "prompt_list": "Prompt List",
+                    "prompt_description": "Available variables: {source_language}, {target_language}, {detected_source_language}, {text}.",
+                    "add_prompt": "Add Prompt"
+                },
+                "gemini_compat": {
+                    "title": "Gemini Compatible",
+                    "base_url": "Base URL",
+                    "base_url_hint": "Full Gemini API base URL, e.g. https://generativelanguage.googleapis.com/v1beta.",
+                    "api_key": "API Key",
+                    "api_key_hint": "Sent as the key query parameter",
+                    "model": "Model",
+                    "temperature": "Temperature",
+                    "stream": "Stream",
+                    "prompt_list": "Prompt List",
+                    "prompt_description": "Available variables: {source_language}, {target_language}, {detected_source_language}, {text}.",
+                    "add_prompt": "Add Prompt"
                 }
             },
             "recognize": {
@@ -430,12 +475,21 @@
                 },
                 "qrcode": {
                     "title": "QR Code"
+                },
+                "paddleocr": {
+                    "title": "PaddleOCR",
+                    "hint": "Local ONNX inference with bundled models. The first recognition loads ~21 MB of models, then they stay in memory."
                 }
             },
             "tts": {
                 "lingva_tts": {
                     "title": "Lingva",
                     "request_path": "Request Path"
+                },
+                "system_tts": {
+                    "title": "System TTS",
+                    "voice": "Voice",
+                    "hint": "Uses the built-in voice of {{os}}. Only languages with an installed voice are supported."
                 }
             },
             "collection": {

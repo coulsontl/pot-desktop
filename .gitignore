@@ -20,3 +20,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# onnxruntime WASM binaries, copied from node_modules by scripts/copy-ort-wasm.mjs
+public/ort

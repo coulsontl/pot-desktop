@@ -13,6 +13,16 @@ export default defineConfig(async () => ({
     server: {
         port: 1420,
         strictPort: true,
+        // Bind IPv4 explicitly. Node 17+ resolves `localhost` to ::1 first on
+        // Windows, so Vite would listen on [::1] while Tauri dials 127.0.0.1
+        // and both sides sit waiting for each other.
+        host: '127.0.0.1',
+        watch: {
+            // Rust writes and locks files under src-tauri/target while it
+            // compiles. Watching that tree makes Vite's fs watcher trip over
+            // the locked .pdb and kill the dev server.
+            ignored: ['**/src-tauri/**'],
+        },
     },
     // to make use of `TAURI_DEBUG` and other env variables
     // https://tauri.studio/v1/api/config#buildconfig.beforedevcommand
@@ -24,8 +34,10 @@ export default defineConfig(async () => ({
                 daemon: resolve(__dirname, 'daemon.html'),
             },
         },
-        // Tauri supports es2021
-        target: process.env.TAURI_PLATFORM == 'windows' ? 'chrome105' : 'safari11',
+        // Tauri supports es2021. safari11 predates BigInt, which onnxruntime-web
+        // (behind the PaddleOCR recognizer) emits, so bump the floor to the
+        // first Safari with BigInt support.
+        target: process.env.TAURI_PLATFORM == 'windows' ? 'chrome105' : 'safari14',
         // don't minify for debug builds
         minify: !process.env.TAURI_DEBUG ? 'esbuild' : false,
         // produce sourcemaps for debug builds

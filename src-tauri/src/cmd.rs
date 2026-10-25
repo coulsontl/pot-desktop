@@ -223,3 +223,72 @@ pub fn open_devtools(window: tauri::Window) {
         window.close_devtools();
     }
 }
+
+/// Synthesize speech with the OS voice and return the audio as base64 WAV.
+///
+/// The frontend plays whatever this returns through decodeAudioData, so the
+/// OS voice has to be rendered to a file first: the speech APIs that talk to
+/// a speaker directly give us nothing to decode.
+#[tauri::command]
+pub fn system_tts(text: String, lang: String) -> Result<Vec<u8>, Error> {
+    #[cfg(target_os = "windows")]
+    use std::os::windows::process::CommandExt;
+
+    let out_dir = std::env::temp_dir();
+    let out_path = out_dir.join(format!("pot-tts-{}.wav", std::process::id()));
+
+    #[cfg(target_os = "windows")]
+    {
+        // SAPI is the only voice backend available without extra packages.
+        // SetOutputToWaveFile keeps the audio so we can hand it back.
+        let script = format!(
+            "Add-Type -AssemblyName System.Speech; \
+             $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; \
+             try {{ $s.SelectVoiceByHints([System.Speech.Synthesis.VoiceGender]::NotSet, \
+             [System.Speech.Synthesis.VoiceAge]::NotSet, 0, [System.Globalization.CultureInfo]::new('{lang}')) }} catch {{}}; \
+             $s.SetOutputToWaveFile('{path}'); \
+             $s.Speak('{text}'); \
+             $s.Dispose()",
+            lang = lang,
+            path = out_path.to_string_lossy().replace('\'', "''"),
+            text = text.replace('\'', "''")
+        );
+        let status = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .creation_flags(0x08000000)
+            .status()?;
+        if !status.success() {
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "System TTS failed").into());
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let voice = if lang.starts_with("zh") { "Tingting" } else { "Samantha" };
+        let status = std::process::Command::new("say")
+            .args(["-v", voice, "-o", &out_path.to_string_lossy(), "--data-format=LEI16@22050", &text])
+            .status()?;
+        if !status.success() {
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "System TTS failed").into());
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // espeak-ng is the most common CLI; it writes WAV with -w.
+        let status = std::process::Command::new("espeak-ng")
+            .args(["-v", &lang, "-w", &out_path.to_string_lossy(), &text])
+            .status()?;
+        if !status.success() {
+            return Err(std::io::Error::new(std::io::ErrorKind::Other, "System TTS failed").into());
+        }
+    }
+
+    // Return the raw bytes, not base64: useVoice feeds this straight into
+    // decodeAudioData via new Uint8Array(data), which a base64 string would
+    // turn into character codes rather than audio samples.
+    let mut buffer = Vec::new();
+    std::fs::File::open(&out_path)?.read_to_end(&mut buffer)?;
+    let _ = std::fs::remove_file(&out_path);
+    Ok(buffer)
+}

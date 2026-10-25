@@ -19,6 +19,9 @@ import * as _geminipro from './geminipro';
 import * as _ollama from './ollama';
 import * as _ecdict from './ecdict';
 import * as _lingva from './lingva';
+import * as _openai_compat from './openai_compat';
+import * as _anthropic_compat from './anthropic_compat';
+import * as _gemini_compat from './gemini_compat';
 
 export const deepl = _deepl;
 export const bing = _bing;
@@ -41,3 +44,6 @@ export const geminipro = _geminipro;
 export const ollama = _ollama;
 export const ecdict = _ecdict;
 export const lingva = _lingva;
+export const openai_compat = _openai_compat;
+export const anthropic_compat = _anthropic_compat;
+export const gemini_compat = _gemini_compat;

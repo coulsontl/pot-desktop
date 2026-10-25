@@ -58,6 +58,7 @@ pub fn check_service_available() -> Result<(), Error> {
         "iflytek_ocr",
         "iflytek_intsig_ocr",
         "iflytek_latex_ocr",
+        "paddleocr",
         "qrcode",
         "simple_latex_ocr",
         "system",
@@ -90,8 +91,11 @@ pub fn check_service_available() -> Result<(), Error> {
         "volcengine",
         "yandex",
         "youdao",
+        "openai_compat",
+        "anthropic_compat",
+        "gemini_compat",
     ];
-    let builtin_tts_list: Vec<&str> = vec!["lingva_tts"];
+    let builtin_tts_list: Vec<&str> = vec!["lingva_tts", "system_tts"];
     let builtin_collection_list: Vec<&str> = vec!["anki", "eudic"];
 
     let plugin_recognize_list: Vec<String> = get_plugin_list("recognize").unwrap_or_default();
