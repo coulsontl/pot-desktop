@@ -22,11 +22,21 @@ let resizeTimeout = null;
 let moveTimeout = null;
 
 // Height floor matches TRANSLATE_MIN_HEIGHT in src-tauri/src/window.rs.
-const TRANSLATE_MIN_HEIGHT = 320;
+const TRANSLATE_MIN_HEIGHT = 306;
 // Leave room for the taskbar so the window never grows past the usable screen.
 const TRANSLATE_MAX_SCREEN_RATIO = 0.9;
 // Toolbar row above the scroll container.
 const TRANSLATE_HEADER_HEIGHT = 35;
+
+// Total natural height of a container's children. Their margins are ignored:
+// the layout uses <Spacer> elements, not margins, so there is nothing to add.
+function sumChildrenHeight(element) {
+    let total = 0;
+    for (const child of element.children) {
+        total += child.getBoundingClientRect().height;
+    }
+    return total;
+}
 
 const listenBlur = () => {
     return listen('tauri://blur', () => {
@@ -172,19 +182,41 @@ export default function Translate() {
     }, [rememberWindowSize]);
 
     // Grow/shrink the window to fit its content, within [min, screen] bounds.
+    // Depends on pluginList because the tree that owns contentRef is not
+    // rendered until pluginList arrives, so a mount-only effect would find the
+    // ref empty and never observe anything.
     const contentRef = useRef(null);
     useEffect(() => {
         if (!contentRef.current) {
             return;
         }
         let cancelled = false;
-        const applyContentHeight = async () => {
+        // One in-flight resize at a time, plus a short cooldown. Resizing the
+        // window reflows the content, which re-enters this observer; without
+        // both guards the re-entries stack up and the window thrashes through
+        // thousands of resize cycles before it settles.
+        let resizing = false;
+        let cooldownUntil = 0;
+        let shrinkTimer = null;
+        const RESIZE_COOLDOWN_MS = 60;
+        // Content grows in stages (plugin list, then service config, then each
+        // translation landing). Growing right away keeps the window ahead of
+        // the text, while shrinking waits until things settle so a briefly
+        // empty box does not make the window jump up and back down.
+        const SHRINK_DELAY_MS = 250;
+        // Measure and resize. Returns early when the window already matches.
+        const resizeToContent = async () => {
             if (cancelled || !contentRef.current) {
                 return;
             }
             const monitor = await currentMonitor();
-            const maxHeight = Math.round(monitor.size.height / monitor.scaleFactor * TRANSLATE_MAX_SCREEN_RATIO);
-            const contentHeight = contentRef.current.scrollHeight + TRANSLATE_HEADER_HEIGHT;
+            const maxHeight = Math.round((monitor.size.height / monitor.scaleFactor) * TRANSLATE_MAX_SCREEN_RATIO);
+            // Sum the children's heights instead of reading scrollHeight.
+            // scrollHeight never reports less than clientHeight, and the
+            // container is stretched by the very window height this effect
+            // controls — so once the window was too tall, scrollHeight echoed
+            // that height and the window could never shrink back.
+            const contentHeight = sumChildrenHeight(contentRef.current) + TRANSLATE_HEADER_HEIGHT;
             const targetHeight = Math.min(Math.max(contentHeight, TRANSLATE_MIN_HEIGHT), maxHeight);
             const currentSize = (await appWindow.outerSize()).toLogical(monitor.scaleFactor);
             if (Math.abs(currentSize.height - targetHeight) < 1) {
@@ -192,17 +224,83 @@ export default function Translate() {
             }
             // Width is left untouched: the user owns it.
             await appWindow.setSize(new LogicalSize(currentSize.width, targetHeight));
+            // Ignore the reflow our own resize just caused.
+            cooldownUntil = Date.now() + RESIZE_COOLDOWN_MS;
         };
-        const observer = new ResizeObserver(() => {
+
+        const applyContentHeight = async () => {
+            if (cancelled || !contentRef.current || resizing || Date.now() < cooldownUntil) {
+                return;
+            }
+            resizing = true;
+            try {
+                const monitor = await currentMonitor();
+                const maxHeight = Math.round(
+                    (monitor.size.height / monitor.scaleFactor) * TRANSLATE_MAX_SCREEN_RATIO
+                );
+                const contentHeight = sumChildrenHeight(contentRef.current) + TRANSLATE_HEADER_HEIGHT;
+                const targetHeight = Math.min(Math.max(contentHeight, TRANSLATE_MIN_HEIGHT), maxHeight);
+                const currentSize = (await appWindow.outerSize()).toLogical(monitor.scaleFactor);
+                if (Math.abs(currentSize.height - targetHeight) < 1) {
+                    return;
+                }
+                if (targetHeight < currentSize.height) {
+                    // Wait for the layout to settle before shrinking, so a
+                    // briefly empty box does not make the window jump up and
+                    // back down. The timer commits the shrink itself — calling
+                    // back into applyContentHeight would re-take this same
+                    // branch and loop forever without ever resizing.
+                    if (shrinkTimer) {
+                        clearTimeout(shrinkTimer);
+                    }
+                    shrinkTimer = setTimeout(() => {
+                        shrinkTimer = null;
+                        void resizeToContent();
+                    }, SHRINK_DELAY_MS);
+                    return;
+                }
+                await resizeToContent();
+            } finally {
+                resizing = false;
+            }
+        };
+        // Observe the children, not the container: the container is stretched
+        // by the window, so its own box only reports the window height. The
+        // children are what actually grow when a translation arrives.
+        const resizeObserver = new ResizeObserver(() => {
             void applyContentHeight();
         });
-        observer.observe(contentRef.current);
+        const observeChildren = () => {
+            resizeObserver.disconnect();
+            for (const child of contentRef.current.children) {
+                resizeObserver.observe(child);
+            }
+        };
+        // Children are added and removed as services load and results stream in.
+        const mutationObserver = new MutationObserver(() => {
+            observeChildren();
+            void applyContentHeight();
+        });
+        mutationObserver.observe(contentRef.current, { childList: true });
+        // Children can still be empty on the render that first produces the
+        // ref, so attach after the browser has committed the layout.
+        observeChildren();
+        requestAnimationFrame(() => {
+            if (!cancelled) {
+                observeChildren();
+                void applyContentHeight();
+            }
+        });
         void applyContentHeight();
         return () => {
             cancelled = true;
-            observer.disconnect();
+            resizeObserver.disconnect();
+            mutationObserver.disconnect();
+            if (shrinkTimer) {
+                clearTimeout(shrinkTimer);
+            }
         };
-    }, []);
+    }, [pluginList]);
 
     const loadPluginList = async () => {
         const serviceTypeList = ['translate', 'tts', 'recognize', 'collection'];
@@ -273,7 +371,7 @@ export default function Translate() {
     return (
         pluginList && (
             <div
-                className={`bg-background w-screen ${
+                className={`bg-background w-screen h-screen flex flex-col ${
                     osType === 'Linux' && 'rounded-[10px] border-1 border-default-100'
                 }`}
             >
@@ -281,7 +379,7 @@ export default function Translate() {
                     className='fixed top-[5px] left-[5px] right-[5px] h-[30px]'
                     data-tauri-drag-region='true'
                 />
-                <div className={`h-[35px] w-full flex ${osType === 'Darwin' ? 'justify-end' : 'justify-between'}`}>
+                <div className={`h-[35px] shrink-0 w-full flex ${osType === 'Darwin' ? 'justify-end' : 'justify-between'}`}>
                     <Button
                         isIconOnly
                         size='sm'
@@ -316,18 +414,20 @@ export default function Translate() {
                         <AiFillCloseCircle className='text-[20px] text-default-400' />
                     </Button>
                 </div>
-                <div
-                    className={`${osType === 'Linux' ? 'max-h-[calc(100vh-37px)]' : 'max-h-[calc(100vh-35px)]'} px-[8px]`}
-                >
-                    <div className='overflow-y-auto'>
-                        <div ref={contentRef}>
-                            {serviceInstanceConfigMap !== null && (
-                                <SourceArea
-                                    pluginList={pluginList}
-                                    serviceInstanceConfigMap={serviceInstanceConfigMap}
-                                />
-                            )}
-                        </div>
+                {/* Fills whatever height the window gives it (the sizing effect
+                    is what decides that), so the scroll area always ends where
+                    the window ends instead of leaving a strip of background. */}
+                <div className='px-[8px] flex-1 min-h-0'>
+                    <div
+                        className='overflow-y-auto h-full'
+                        ref={contentRef}
+                    >
+                        {serviceInstanceConfigMap !== null && (
+                            <SourceArea
+                                pluginList={pluginList}
+                                serviceInstanceConfigMap={serviceInstanceConfigMap}
+                            />
+                        )}
                         <div className={`${hideLanguage && 'hidden'}`}>
                             <LanguageArea />
                             <Spacer y={2} />

@@ -42,15 +42,47 @@ pub static APP: OnceCell<tauri::AppHandle> = OnceCell::new();
 pub struct StringWrapper(pub Mutex<String>);
 
 fn main() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _, cwd| {
+    // tauri-plugin-single-instance v1 dereferences a null pointer in its
+    // window proc (see plugins/single-instance/src/platform_impl/windows.rs,
+    // `single_instance_window_proc`): CreateWindowExW dispatches WM_NCCREATE
+    // before GWL_USERDATA is set, so the very first message reads a null
+    // pointer. It only crashes in debug builds, and disabling the plugin there
+    // let several Pot instances run at once — each with its own windows.
+    // On Windows, take the mutex directly instead.
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS};
+        use windows::Win32::System::Threading::CreateMutexW;
+        use windows::core::HSTRING;
+
+        let mutex_name = HSTRING::from("Local\\com.pot-app.desktop.single-instance");
+        let handle = unsafe { CreateMutexW(None, true, &mutex_name) }
+            .expect("failed to create the single-instance mutex");
+        let already_running = unsafe { GetLastError() } == ERROR_ALREADY_EXISTS;
+        if already_running {
+            // Another Pot owns the mutex; leave without touching any state.
+            unsafe {
+                let _ = CloseHandle(handle);
+            }
+            std::process::exit(0);
+        }
+    }
+    // `mut` is only needed where the single-instance plugin is registered.
+    #[cfg_attr(windows, allow(unused_mut))]
+    let mut builder = tauri::Builder::default();
+    // Non-Windows still uses the plugin, where it does not have this bug.
+    #[cfg(not(windows))]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _, cwd| {
             Notification::new(&app.config().tauri.bundle.identifier)
                 .title("The program is already running. Please do not start it again!")
                 .body(cwd)
                 .icon("pot")
                 .show()
                 .unwrap();
-        }))
+        }));
+    }
+    builder
         .plugin(
             tauri_plugin_log::Builder::default()
                 .targets([LogTarget::LogDir, LogTarget::Stdout])
@@ -147,6 +179,7 @@ fn main() {
             local,
             install_plugin,
             font_list,
+            system_tts,
             aliyun
         ])
         .on_system_tray_event(tray_event_handler)

@@ -51,18 +51,16 @@ export default function SourceArea(props) {
 
     const handleNewText = async (text) => {
         text = text.trim();
+        // The Rust side already showed and focused the window before emitting
+        // this event; re-showing here fought that and made the window bounce.
+        // Hiding is still ours to honour.
         if (hideWindow) {
             appWindow.hide();
-        } else {
-            appWindow.show();
-            appWindow.setFocus();
         }
         // 清空检测语言
         setDetectLanguage('');
         if (text === '[INPUT_TRANSLATE]') {
             setWindowType('[INPUT_TRANSLATE]');
-            appWindow.show();
-            appWindow.setFocus();
             setSourceText('', true);
         } else if (text === '[IMAGE_TRANSLATE]') {
             setWindowType('[IMAGE_TRANSLATE]');

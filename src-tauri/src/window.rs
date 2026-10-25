@@ -16,7 +16,8 @@ use window_shadows::set_shadow;
 // Translate window floor. The frontend grows the height to fit its content and
 // only falls back to scrolling once it reaches the screen edge.
 const TRANSLATE_MIN_WIDTH: f64 = 350.0;
-const TRANSLATE_MIN_HEIGHT: f64 = 320.0;
+// Keep in sync with TRANSLATE_MIN_HEIGHT in src/window/Translate/index.jsx.
+const TRANSLATE_MIN_HEIGHT: f64 = 306.0;
 
 // Get daemon window instance
 fn get_daemon_window() -> Window {
@@ -245,7 +246,20 @@ pub fn selection_translate() {
     }
 
     let window = translate_window();
+    show_and_focus(&window);
     window.emit("new_text", text).unwrap();
+}
+
+/// Reveal the translate window before its `new_text` event is delivered.
+///
+/// The window is built hidden so it cannot flash at the cursor before the
+/// frontend has sized it. That leaves a gap where the event arrives before the
+/// webview has painted or taken focus, and a stray blur in that gap reaches the
+/// frontend's close-on-blur handler and closes the window immediately. Showing
+/// and focusing here closes the gap.
+fn show_and_focus(window: &Window) {
+    window.show().unwrap();
+    window.set_focus().unwrap();
 }
 
 pub fn input_translate() {
@@ -266,6 +280,7 @@ pub fn input_translate() {
         window.center().unwrap();
     }
 
+    show_and_focus(&window);
     window.emit("new_text", "[INPUT_TRANSLATE]").unwrap();
 }
 
@@ -275,6 +290,7 @@ pub fn text_translate(text: String) {
     let state: tauri::State<StringWrapper> = app_handle.state();
     state.0.lock().unwrap().replace_range(.., &text);
     let window = translate_window();
+    show_and_focus(&window);
     window.emit("new_text", text).unwrap();
 }
 
@@ -287,6 +303,7 @@ pub fn image_translate() {
         .unwrap()
         .replace_range(.., "[IMAGE_TRANSLATE]");
     let window = translate_window();
+    show_and_focus(&window);
     window.emit("new_text", "[IMAGE_TRANSLATE]").unwrap();
 }
 
