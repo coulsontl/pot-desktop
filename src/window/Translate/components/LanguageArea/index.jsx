@@ -56,7 +56,7 @@ export default function LanguageArea() {
                         </DropdownTrigger>
                         <DropdownMenu
                             aria-label='Source Language'
-                            className='max-h-[50vh] overflow-y-auto'
+                            className='max-h-[300px] overflow-y-auto'
                             onAction={(key) => {
                                 setSourceLanguage(key);
                             }}
@@ -111,7 +111,7 @@ export default function LanguageArea() {
                         </DropdownTrigger>
                         <DropdownMenu
                             aria-label='Target Language'
-                            className='max-h-[50vh] overflow-y-auto'
+                            className='max-h-[300px] overflow-y-auto'
                             onAction={(key) => {
                                 setTargetLanguage(key);
                             }}

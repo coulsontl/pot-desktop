@@ -13,6 +13,11 @@ use tauri::WindowBuilder;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use window_shadows::set_shadow;
 
+// Translate window floor. The frontend grows the height to fit its content and
+// only falls back to scrolling once it reaches the screen edge.
+const TRANSLATE_MIN_WIDTH: f64 = 350.0;
+const TRANSLATE_MIN_HEIGHT: f64 = 320.0;
+
 // Get daemon window instance
 fn get_daemon_window() -> Window {
     let app_handle = APP.get().unwrap();
@@ -155,6 +160,11 @@ fn translate_window() -> Window {
 
     let monitor = window.current_monitor().unwrap().unwrap();
     let dpi = monitor.scale_factor();
+
+    // The frontend grows the window to fit its content; this is only the floor.
+    window
+        .set_min_size(Some(tauri::LogicalSize::new(TRANSLATE_MIN_WIDTH, TRANSLATE_MIN_HEIGHT)))
+        .unwrap();
 
     window
         .set_size(tauri::PhysicalSize::new(

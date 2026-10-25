@@ -1,11 +1,11 @@
 import { readDir, BaseDirectory, readTextFile, exists } from '@tauri-apps/api/fs';
 import { DragDropContext, Draggable, Droppable } from 'react-beautiful-dnd';
-import { appWindow, currentMonitor } from '@tauri-apps/api/window';
+import { appWindow, currentMonitor, LogicalSize } from '@tauri-apps/api/window';
 import { appConfigDir, join } from '@tauri-apps/api/path';
 import { convertFileSrc } from '@tauri-apps/api/tauri';
 import { Spacer, Button } from '@nextui-org/react';
 import { AiFillCloseCircle } from 'react-icons/ai';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { BsPinFill } from 'react-icons/bs';
 
@@ -20,6 +20,13 @@ import { info } from 'tauri-plugin-log-api';
 let blurTimeout = null;
 let resizeTimeout = null;
 let moveTimeout = null;
+
+// Height floor matches TRANSLATE_MIN_HEIGHT in src-tauri/src/window.rs.
+const TRANSLATE_MIN_HEIGHT = 320;
+// Leave room for the taskbar so the window never grows past the usable screen.
+const TRANSLATE_MAX_SCREEN_RATIO = 0.9;
+// Toolbar row above the scroll container.
+const TRANSLATE_HEADER_HEIGHT = 35;
 
 const listenBlur = () => {
     return listen('tauri://blur', () => {
@@ -148,7 +155,9 @@ export default function Translate() {
                         const monitor = await currentMonitor();
                         const factor = monitor.scaleFactor;
                         size = size.toLogical(factor);
-                        await store.set('translate_window_height', parseInt(size.height));
+                        // Height is driven by the content, so only the width is worth
+                        // remembering; persisting the height would reopen the window at
+                        // whatever the last translation happened to need.
                         await store.set('translate_window_width', parseInt(size.width));
                         await store.save();
                     }
@@ -161,6 +170,39 @@ export default function Translate() {
             };
         }
     }, [rememberWindowSize]);
+
+    // Grow/shrink the window to fit its content, within [min, screen] bounds.
+    const contentRef = useRef(null);
+    useEffect(() => {
+        if (!contentRef.current) {
+            return;
+        }
+        let cancelled = false;
+        const applyContentHeight = async () => {
+            if (cancelled || !contentRef.current) {
+                return;
+            }
+            const monitor = await currentMonitor();
+            const maxHeight = Math.round(monitor.size.height / monitor.scaleFactor * TRANSLATE_MAX_SCREEN_RATIO);
+            const contentHeight = contentRef.current.scrollHeight + TRANSLATE_HEADER_HEIGHT;
+            const targetHeight = Math.min(Math.max(contentHeight, TRANSLATE_MIN_HEIGHT), maxHeight);
+            const currentSize = (await appWindow.outerSize()).toLogical(monitor.scaleFactor);
+            if (Math.abs(currentSize.height - targetHeight) < 1) {
+                return;
+            }
+            // Width is left untouched: the user owns it.
+            await appWindow.setSize(new LogicalSize(currentSize.width, targetHeight));
+        };
+        const observer = new ResizeObserver(() => {
+            void applyContentHeight();
+        });
+        observer.observe(contentRef.current);
+        void applyContentHeight();
+        return () => {
+            cancelled = true;
+            observer.disconnect();
+        };
+    }, []);
 
     const loadPluginList = async () => {
         const serviceTypeList = ['translate', 'tts', 'recognize', 'collection'];
@@ -231,7 +273,7 @@ export default function Translate() {
     return (
         pluginList && (
             <div
-                className={`bg-background h-screen w-screen ${
+                className={`bg-background w-screen ${
                     osType === 'Linux' && 'rounded-[10px] border-1 border-default-100'
                 }`}
             >
@@ -274,9 +316,11 @@ export default function Translate() {
                         <AiFillCloseCircle className='text-[20px] text-default-400' />
                     </Button>
                 </div>
-                <div className={`${osType === 'Linux' ? 'h-[calc(100vh-37px)]' : 'h-[calc(100vh-35px)]'} px-[8px]`}>
-                    <div className='h-full overflow-y-auto'>
-                        <div>
+                <div
+                    className={`${osType === 'Linux' ? 'max-h-[calc(100vh-37px)]' : 'max-h-[calc(100vh-35px)]'} px-[8px]`}
+                >
+                    <div className='overflow-y-auto'>
+                        <div ref={contentRef}>
                             {serviceInstanceConfigMap !== null && (
                                 <SourceArea
                                     pluginList={pluginList}

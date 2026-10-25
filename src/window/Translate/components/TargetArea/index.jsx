@@ -427,7 +427,7 @@ export default function TargetArea(props) {
                         </DropdownTrigger>
                         <DropdownMenu
                             aria-label='app language'
-                            className='max-h-[40vh] overflow-y-auto'
+                            className='max-h-[320px] overflow-y-auto'
                             onAction={(key) => {
                                 setCurrentTranslateServiceInstanceKey(key);
                             }}
